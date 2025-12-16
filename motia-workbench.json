@@ -16,8 +16,12 @@
     "id": "autopsy-flow",
     "config": {
       "src\\webhooks\\github-listener.step.ts": {
-        "x": -312,
-        "y": 70
+        "x": -219,
+        "y": 52
+      },
+      "src\\autopsy\\fetch-logs.step.ts": {
+        "x": 202,
+        "y": 47
       }
     }
   }

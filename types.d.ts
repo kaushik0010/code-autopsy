@@ -12,7 +12,8 @@ declare module 'motia' {
   }
 
   interface Handlers {
-    'GithubWebhookListener': ApiRouteHandler<Record<string, unknown>, ApiResponse<200, { status: string }> | ApiResponse<202, { status: string; message: string }> | ApiResponse<400, { status: string; message: string }>, never>
+    'GithubWebhookListener': ApiRouteHandler<Record<string, unknown>, ApiResponse<200, { status: string }> | ApiResponse<202, { status: string; message: string }> | ApiResponse<400, { status: string; message: string }>, { topic: 'start-autopsy'; data: { repoName: string; jobId: number; jobName: string; commitSha: string; runUrl: string; timestamp: string } }>
+    'FetchBuildLogs': EventHandler<{ repoName: string; jobId: number; jobName: string; commitSha: string; runUrl: string; timestamp: string }, never>
   }
     
 }

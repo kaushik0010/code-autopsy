@@ -21,11 +21,14 @@
     "@motiadev/plugin-logs": "^0.17.6-beta.187",
     "@motiadev/plugin-observability": "^0.17.6-beta.187",
     "@motiadev/plugin-states": "^0.17.6-beta.187",
+    "@octokit/rest": "^22.0.1",
+    "adm-zip": "^0.5.16",
     "motia": "^0.17.6-beta.187",
     "zod": "^4.1.12"
   },
   "devDependencies": {
     "@motiadev/workbench": "^0.17.6-beta.187",
+    "@types/adm-zip": "^0.5.7",
     "@types/react": "^19.1.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.7.3"
