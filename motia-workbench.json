@@ -22,6 +22,10 @@
       "src\\autopsy\\fetch-logs.step.ts": {
         "x": 202,
         "y": 47
+      },
+      "src\\autopsy\\analyze-failure.step.ts": {
+        "x": 634,
+        "y": 24
       }
     }
   }
