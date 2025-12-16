@@ -1,0 +1,31 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "allowJs": true,
+    "outDir": "dist",
+    "rootDir": ".",
+    "baseUrl": ".",
+    "jsx": "react-jsx"
+  },
+  "include": [
+    "src/**/*.ts",         // <--- CHANGED: Only look inside src
+    "motia.config.ts",     // Explicitly include config
+    "types.d.ts"           // Explicitly include types
+  ],
+  "exclude": [
+    "node_modules",
+    "src/.motia",          // Ensure this remains excluded
+    "**/.motia",
+    "dist",
+    "tests"
+  ]
+}

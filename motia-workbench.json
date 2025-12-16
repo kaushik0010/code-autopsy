@@ -1,0 +1,24 @@
+[
+  {
+    "id": "hello-world-flow",
+    "config": {
+      "src\\hello\\process-greeting.step.ts": {
+        "x": 373,
+        "y": 44
+      },
+      "src\\hello\\hello-api.step.ts": {
+        "x": -35,
+        "y": 25
+      }
+    }
+  },
+  {
+    "id": "autopsy-flow",
+    "config": {
+      "src\\webhooks\\github-listener.step.ts": {
+        "x": -312,
+        "y": 70
+      }
+    }
+  }
+]
