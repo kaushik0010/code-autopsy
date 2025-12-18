@@ -25,6 +25,7 @@
     "@octokit/rest": "^22.0.1",
     "adm-zip": "^0.5.16",
     "motia": "^0.17.6-beta.187",
+    "octokit-plugin-create-pull-request": "^6.0.1",
     "zod": "^4.1.12"
   },
   "devDependencies": {

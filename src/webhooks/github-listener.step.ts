@@ -14,6 +14,7 @@ const githubPayloadSchema = z.object({
     conclusion: z.string().nullable(),
     head_sha: z.string(),
     run_url: z.string(),
+    head_branch: z.string().optional(), // <--- ADDED THIS (Required for the loop fix)
   }).optional()
 }).passthrough();
 
@@ -28,53 +29,53 @@ export const config: ApiRouteConfig = {
   responseSchema: {
     200: z.object({ status: z.string() }),
     202: z.object({ status: z.string(), message: z.string() }),
-    // FIX 1: Add 400 here so we are allowed to return it
     400: z.object({ status: z.string(), message: z.string() })
   }
 };
 
-// FIX 2: Remove the explicit type temporarily if you haven't updated types.d.ts yet
-// changing Handlers['GithubWebhookListener'] to just 'any' or generic for now
-// so you can run the code.
-export const handler: any = async (req: any, { emit, logger }: any) => {
-  const payload = githubPayloadSchema.safeParse(req.body);
+// @ts-ignore - bypassing strict types for hackathon speed
+export const handler = async (event: any, { emit, logger }: any) => {
+  const { headers, body } = event;
+  const eventType = headers['x-github-event'];
 
-  if (!payload.success) {
-    logger.warn('⚠️ Invalid GitHub Payload', { errors: payload.error });
-    return { status: 400, body: { status: 'error', message: 'Invalid payload' } };
+  // 1. Acknowledge Ping events (GitHub sends these to test the connection)
+  if (eventType === 'ping') {
+    return { status: 200, body: { status: 'pong' } };
   }
 
-  const { workflow_job, repository } = payload.data;
+  if (eventType === 'workflow_job') {
+    const { workflow_job } = body;
+    const branchName = workflow_job.head_branch;
 
-  if (!workflow_job || workflow_job.status !== 'completed') {
-    return { status: 200, body: { status: 'ignored (not completed)' } };
-  }
-
-  if (workflow_job.conclusion !== 'failure') {
-    logger.info(`✅ Job passed: ${workflow_job.name}`);
-    return { status: 200, body: { status: 'ignored (success)' } };
-  }
-
-  logger.error('🚨 CI FAILURE DETECTED! Initiating Autopsy...', { 
-    repo: repository.full_name, 
-    job: workflow_job.name,
-    commit: workflow_job.head_sha
-  });
-
-  await emit({
-    topic: 'start-autopsy',
-    data: {
-      repoName: repository.full_name,
-      jobId: workflow_job.id,
-      jobName: workflow_job.name,
-      commitSha: workflow_job.head_sha,
-      runUrl: workflow_job.run_url,
-      timestamp: new Date().toISOString()
+    // 🛑 STOP THE LOOP: Ignore failures on branches we created
+    if (branchName && branchName.includes('autopsy/')) {
+      logger.info(`🚫 Ignoring failure on autopsy branch: ${branchName}. The Surgeon should not operate on itself.`);
+      // IMPORTANT: Return 200 so GitHub knows we received it, even if we ignored it.
+      return { status: 200, body: { status: 'ignored_autopsy_branch' } }; 
     }
-  });
 
-  return {
-    status: 202,
-    body: { status: 'triggered', message: 'Autopsy started.' }
-  };
+    if (workflow_job.status === 'completed' && workflow_job.conclusion === 'failure') {
+      logger.error(`🚨 CI FAILURE DETECTED! Initiating Autopsy...`);
+      logger.info(`├ repo: ${body.repository.full_name}`);
+      logger.info(`├ job: ${workflow_job.name}`);
+      logger.info(`└ commit: ${workflow_job.head_sha}`);
+
+      await emit({
+        topic: 'start-autopsy',
+        data: {
+          repoName: body.repository.full_name,
+          jobId: workflow_job.id,
+          jobName: workflow_job.name,
+          commitSha: workflow_job.head_sha,
+          runUrl: workflow_job.html_url,
+          timestamp: workflow_job.completed_at
+        }
+      });
+      
+      return { status: 200, body: { status: 'autopsy_started' } };
+    }
+  }
+
+  // Default response for other events
+  return { status: 200, body: { status: 'ignored' } };
 };

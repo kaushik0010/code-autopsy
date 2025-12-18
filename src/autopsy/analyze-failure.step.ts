@@ -45,13 +45,14 @@ export const handler = async (input: any, { emit, logger, state }: any) => {
     TASK:
     1. Identify the root cause.
     2. Provide the specific file path that likely needs fixing.
-    3. Provide the EXACT code change needed to fix it.
+    3. Generate the FULL CORRECTED FILE CONTENT. 
+       (Do not just provide a snippet. Provide the entire file so I can overwrite it directly).
     
     RESPONSE FORMAT (Strict JSON):
     {
-      "rootCause": "Short explanation of the error",
-      "filePath": "path/to/file",
-      "suggestedFix": "The complete fixed code block or shell command",
+      "rootCause": "Short explanation",
+      "filePath": "path/to/file (e.g. .github/workflows/ci-fail.yml)",
+      "suggestedFix": "THE FULL FILE CONTENT HERE (escape newlines properly)",
       "explanation": "Why this fixes the issue"
     }
     

@@ -23,9 +23,13 @@
         "x": 202,
         "y": 47
       },
+      "src\\autopsy\\create-pr.step.ts": {
+        "x": 1050,
+        "y": 22
+      },
       "src\\autopsy\\analyze-failure.step.ts": {
-        "x": 634,
-        "y": 24
+        "x": 631,
+        "y": 37
       }
     }
   }
