@@ -3,7 +3,6 @@ import { z } from 'zod';
 import { Octokit } from '@octokit/rest';
 import { createPullRequest } from 'octokit-plugin-create-pull-request';
 
-// Add the plugin to Octokit
 const MyOctokit = Octokit.plugin(createPullRequest);
 
 const inputSchema = z.object({
@@ -21,14 +20,14 @@ export const config: EventConfig = {
   name: 'CreateFixPR',
   type: 'event',
   description: 'Applies the AI fix and creates a Pull Request',
-  subscribes: ['apply-fix'], // Listens to Day 3
-  emits: [], // End of the line!
+  subscribes: ['apply-fix'],
+  emits: ['pr-created'], // <--- NEW: Signal that PR is done
   flows: ['autopsy-flow'],
   input: inputSchema
 };
 
-// @ts-ignore - "Hackathon Mode" activated
-export const handler = async (input: any, { logger, state }: any) => {
+// @ts-ignore
+export const handler = async (input: any, { emit, logger, state }: any) => {
   const { repoName, analysis, jobId } = input;
   const [owner, repo] = repoName.split('/');
 
@@ -57,23 +56,18 @@ The AI Agent detected a failure in \`${analysis.filePath}\`.
   `;
 
   try {
-    // This magic function does EVERYTHING:
-    // 1. Checks out main
-    // 2. Creates a branch
-    // 3. Commits the file change
-    // 4. Opens the PR
     const prResponse = await octokit.createPullRequest({
       owner,
       repo,
       title: prTitle,
       body: prBody,
       head: branchName,
-      base: 'main', // Ensure this matches your repo's default branch (main vs master)
+      base: 'main',
       update: true,
       changes: [
         {
           files: {
-            [analysis.filePath]: analysis.suggestedFix, // The file path and the new content
+            [analysis.filePath]: analysis.suggestedFix,
           },
           commit: `fix: resolve build issue in ${analysis.filePath}`,
         },
@@ -81,15 +75,24 @@ The AI Agent detected a failure in \`${analysis.filePath}\`.
     });
 
     if (prResponse) {
-      logger.info(`🎉 PR Created Successfully! URL: ${prResponse.data.html_url}`);
+      const prUrl = prResponse.data.html_url;
+      logger.info(`🎉 PR Created Successfully! URL: ${prUrl}`);
       
-      // Save victory to state
       await state.set('autopsy-result', String(jobId), {
         status: 'FIXED',
-        prUrl: prResponse.data.html_url
+        prUrl: prUrl
       });
       
-      return { status: 'success', prUrl: prResponse.data.html_url };
+      // <--- NEW: Trigger the notification step
+      await emit({
+        topic: 'pr-created',
+        data: {
+          ...input, // Pass original context
+          prUrl: prUrl
+        }
+      });
+      
+      return { status: 'success', prUrl };
     } else {
       logger.warn('⚠️ No changes needed (code might already match).');
       return { status: 'skipped' };

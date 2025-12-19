@@ -1,6 +1,7 @@
 import type { EventConfig } from 'motia';
 import { z } from 'zod';
 import { GoogleGenAI } from '@google/genai';
+import { Octokit } from '@octokit/rest';
 
 const inputSchema = z.object({
   repoName: z.string(),
@@ -9,98 +10,127 @@ const inputSchema = z.object({
   commitSha: z.string(),
   runUrl: z.string(),
   timestamp: z.string(),
-  failureLogs: z.string() 
+  failureLogs: z.string()
 });
 
 export const config: EventConfig = {
   name: 'AnalyzeFailure',
   type: 'event',
-  description: 'Analyzes logs using Gemini to find root cause and fix',
-  subscribes: ['analyze-logs'], 
-  emits: ['apply-fix'],         
+  description: 'V2: Reads logs, fetches source code, and generates a fix',
+  subscribes: ['analyze-logs'],
+  emits: ['apply-fix'],
   flows: ['autopsy-flow'],
   input: inputSchema
 };
 
-// @ts-ignore - bypassing strict types
+// @ts-ignore
 export const handler = async (input: any, { emit, logger, state }: any) => {
-  const { failureLogs, repoName } = input;
+  const { failureLogs, repoName, commitSha, jobId } = input;
+  const [owner, repo] = repoName.split('/');
   
-  logger.info('🧠 Consulting the Oracle (Gemini)...');
+  logger.info('🧠 V2 Analysis Started: Scouting for the broken file...');
 
-  if (!process.env.GEMINI_API_KEY) {
-    throw new Error('GEMINI_API_KEY is missing in .env');
+  if (!process.env.GEMINI_API_KEY || !process.env.GITHUB_TOKEN) {
+    throw new Error('Missing API Keys in .env');
   }
 
-  // Initialize the new client
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-
-  const prompt = `
-    You are a Senior DevOps Engineer. 
-    Analyze the following CI/CD build failure log from the repository '${repoName}'.
-    
-    FAILURE LOGS:
-    ${failureLogs}
-
-    TASK:
-    1. Identify the root cause.
-    2. Provide the specific file path that likely needs fixing.
-    3. Generate the FULL CORRECTED FILE CONTENT. 
-       (Do not just provide a snippet. Provide the entire file so I can overwrite it directly).
-    
-    RESPONSE FORMAT (Strict JSON):
-    {
-      "rootCause": "Short explanation",
-      "filePath": "path/to/file (e.g. .github/workflows/ci-fail.yml)",
-      "suggestedFix": "THE FULL FILE CONTENT HERE (escape newlines properly)",
-      "explanation": "Why this fixes the issue"
-    }
-    
-    Do not include markdown formatting (like \`\`\`json) in the response, just raw JSON.
-  `;
+  const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
 
   try {
-    // New SDK Call Syntax
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash", // Using stable flash model
-      contents: [
-        {
-          role: "user",
-          parts: [{ text: prompt }]
-        }
-      ],
-      config: {
-        responseMimeType: "application/json", // Force JSON mode (Gemini specific feature)
-      }
+    // --- PHASE 1: THE SCOUT (Identify the file) ---
+    const scoutPrompt = `
+      Analyze these CI/CD logs and identify the SPECIFIC file path that is causing the error.
+      
+      LOGS:
+      ${failureLogs}
+
+      Examples of what I want: 
+      - "src/app.ts"
+      - ".github/workflows/ci.yml"
+      - "package.json"
+
+      Return JSON only: { "filePath": "path/to/file" }
+      If you cannot be 100% sure, make your best guess based on the error trace.
+    `;
+
+    const scoutResponse = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: [{ role: "user", parts: [{ text: scoutPrompt }] }],
+      config: { responseMimeType: "application/json" }
     });
 
-    // The new SDK handles the text extraction slightly differently
-    const responseText = response.text || ""; 
+    const scoutData = JSON.parse(scoutResponse.text || "{}");
+    const targetFile = scoutData.filePath;
 
-    if (!responseText) {
-      logger.warn('Gemini returned no text. Full response:', response);
-      throw new Error("Received empty response from Gemini");
+    if (!targetFile) {
+      throw new Error("AI could not identify the broken file path from logs.");
     }
-    
-    // Clean up just in case
-    const cleanJson = responseText?.replace(/```json/g, '').replace(/```/g, '').trim();
-    
-    if (!cleanJson) throw new Error("Received empty response from Gemini");
 
-    const analysis = JSON.parse(cleanJson);
+    logger.info(`🔍 Scout identified suspect: ${targetFile}`);
 
-    logger.info('✅ Diagnosis complete!', { 
-      cause: analysis.rootCause,
-      fix: analysis.suggestedFix 
+
+    // --- PHASE 2: THE RETRIEVER (Fetch the code) ---
+    let fileContent = "";
+    try {
+      const { data } = await octokit.repos.getContent({
+        owner,
+        repo,
+        path: targetFile,
+        ref: commitSha // Get the version exactly as it was when it failed
+      });
+
+      // GitHub returns content in base64
+      if ('content' in data && typeof data.content === 'string') {
+        fileContent = Buffer.from(data.content, 'base64').toString('utf-8');
+        logger.info(`📂 Retrieved file content (${fileContent.length} chars)`);
+      }
+    } catch (err) {
+      logger.warn(`⚠️ Could not fetch file content for ${targetFile}. Proceeding with logs only.`);
+    }
+
+
+    // --- PHASE 3: THE SURGEON (Generate the fix) ---
+    logger.info('🩺 Surgeon is analyzing code + logs...');
+    
+    const surgeonPrompt = `
+      You are a Senior DevOps Engineer. I have a build failure.
+      
+      THE BROKEN FILE (${targetFile}):
+      \`\`\`
+      ${fileContent}
+      \`\`\`
+
+      THE ERROR LOGS:
+      ${failureLogs}
+
+      TASK:
+      1. Analyze the relationship between the code and the error.
+      2. Generate the FULL CORRECTED FILE CONTENT.
+      
+      RESPONSE FORMAT (Strict JSON):
+      {
+        "rootCause": "Explanation of the bug",
+        "filePath": "${targetFile}",
+        "suggestedFix": "THE FULL CORRECTED FILE CONTENT (Strings must be escaped properly)",
+        "explanation": "Why this change fixes the bug"
+      }
+    `;
+
+    const surgeonResponse = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: [{ role: "user", parts: [{ text: surgeonPrompt }] }],
+      config: { responseMimeType: "application/json" }
     });
+
+    const analysis = JSON.parse(surgeonResponse.text || "{}");
+
+    logger.info('✅ V2 Diagnosis complete!', { cause: analysis.rootCause });
 
     // Save to state
-    await state.set('autopsy-analysis', String(input.jobId), {
-      ...analysis,
-      analyzedAt: new Date().toISOString()
-    });
+    await state.set('autopsy-analysis', String(jobId), { ...analysis, v2: true });
 
-    // Trigger Day 4: The Surgeon
+    // Trigger Day 4: The Surgeon (PR Creator)
     await emit({
       topic: 'apply-fix',
       data: {
@@ -109,7 +139,7 @@ export const handler = async (input: any, { emit, logger, state }: any) => {
       }
     });
 
-    return { status: 'analyzed', analysis };
+    return { status: 'analyzed_v2', targetFile };
 
   } catch (error: any) {
     logger.error('Failed to analyze failure', { error: error.message });

@@ -16,20 +16,24 @@
     "id": "autopsy-flow",
     "config": {
       "src\\webhooks\\github-listener.step.ts": {
-        "x": -219,
-        "y": 52
-      },
-      "src\\autopsy\\fetch-logs.step.ts": {
-        "x": 202,
-        "y": 47
-      },
-      "src\\autopsy\\create-pr.step.ts": {
-        "x": 1050,
+        "x": -188,
         "y": 22
       },
+      "src\\autopsy\\notify-discord.step.ts": {
+        "x": 1412,
+        "y": 30
+      },
+      "src\\autopsy\\fetch-logs.step.ts": {
+        "x": 151,
+        "y": -19
+      },
+      "src\\autopsy\\create-pr.step.ts": {
+        "x": 986,
+        "y": -40
+      },
       "src\\autopsy\\analyze-failure.step.ts": {
-        "x": 631,
-        "y": 37
+        "x": 567,
+        "y": -47
       }
     }
   }
